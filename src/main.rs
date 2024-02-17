@@ -1,19 +1,28 @@
 use std::env;
 
+use reqwest::Client as HttpClient;
 use serenity::{
     async_trait,
     client::{Client, Context, EventHandler},
-    framework::{standard::macros::group, StandardFramework},
+    framework::{
+        standard::{macros::group, Configuration},
+        StandardFramework,
+    },
     model::gateway::Ready,
-    prelude::GatewayIntents,
+    prelude::{GatewayIntents, TypeMapKey},
 };
-mod commands;
+use songbird::SerenityInit;
 
-use commands::ping::PING_COMMAND;
+mod commands;
+use commands::{music::PLAY_COMMAND, ping::PING_COMMAND, voice::JOIN_COMMAND};
 
 #[group]
-#[commands(ping)]
+#[commands(ping, join)]
 struct General;
+
+#[group]
+#[commands(play)]
+struct Music;
 
 struct Handler;
 
@@ -24,20 +33,31 @@ impl EventHandler for Handler {
     }
 }
 
+struct HttpKey;
+
+impl TypeMapKey for HttpKey {
+    type Value = HttpClient;
+}
+
 #[tokio::main]
 async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
-    let intents = GatewayIntents::GUILD_MESSAGES
+    let intents = GatewayIntents::non_privileged()
+        | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT;
+        | GatewayIntents::MESSAGE_CONTENT
+        | GatewayIntents::GUILD_VOICE_STATES;
 
     let framework = StandardFramework::new()
-        .configure(|c| c.prefix("!"))
-        .group(&GENERAL_GROUP);
+        .group(&GENERAL_GROUP)
+        .group(&MUSIC_GROUP);
+    framework.configure(Configuration::new().prefix("!"));
 
     let mut client = Client::builder(&token, intents)
         .event_handler(Handler)
         .framework(framework)
+        .register_songbird()
+        .type_map_insert::<HttpKey>(HttpClient::new())
         .await
         .expect("Error creating serenity client");
 
