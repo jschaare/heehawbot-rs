@@ -27,7 +27,7 @@ impl VoiceEventHandler for TrackErrorNotifier {
 
 #[command]
 #[only_in(guilds)]
-async fn join(ctx: &Context, msg: &Message) -> CommandResult {
+pub async fn join(ctx: &Context, msg: &Message) -> CommandResult {
     let (guild_id, channel_id) = {
         let guild = msg.guild(&ctx.cache).unwrap();
         let channel_id = guild

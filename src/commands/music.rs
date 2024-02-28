@@ -5,7 +5,7 @@ use serenity::{
 };
 use songbird::input::YoutubeDl;
 
-use crate::HttpKey;
+use crate::{commands::voice, HttpKey};
 
 #[command]
 pub async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
@@ -17,7 +17,6 @@ pub async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
             return Ok(());
         }
     };
-    msg.reply(ctx, format!("received {}", url)).await?;
 
     let guild_id = msg.guild_id.unwrap();
 
@@ -33,13 +32,27 @@ pub async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
 
+    // if not currently in voice channel, try to join
+    if let None = manager.get(guild_id) {
+        voice::join(ctx, msg, args)
+            .await
+            .expect("Voice channel connection failed.");
+    }
+
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
         let src = YoutubeDl::new(http_client, url);
-        let _ = handler.play_input(src.clone().into());
 
-        msg.reply(ctx, "Playing song").await?;
+        // enqueue using songbird built-in queue
+        let _ = handler.enqueue_input(src.clone().into()).await;
+
+        let queue_len = handler.queue().len();
+        if queue_len > 1 {
+            msg.reply(ctx,  format!("Queued song at position {}!", queue_len - 1)).await?;
+        } else {
+            msg.reply(ctx, "Playing song").await?;
+        }
     } else {
         msg.reply(ctx, "Not in a voice channel to play in").await?;
     }
