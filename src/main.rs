@@ -14,14 +14,17 @@ use serenity::{
 use songbird::SerenityInit;
 
 mod commands;
-use commands::{music::PLAY_COMMAND, ping::PING_COMMAND, voice::JOIN_COMMAND};
+use commands::{
+    music::{join::JOIN_COMMAND, leave::LEAVE_COMMAND, play::PLAY_COMMAND, skip::SKIP_COMMAND},
+    ping::PING_COMMAND,
+};
 
 #[group]
-#[commands(ping, join)]
+#[commands(ping)]
 struct General;
 
 #[group]
-#[commands(play)]
+#[commands(join, leave, play, skip)]
 struct Music;
 
 struct Handler;

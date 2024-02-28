@@ -5,7 +5,8 @@ use serenity::{
 };
 use songbird::input::YoutubeDl;
 
-use crate::{commands::voice, HttpKey};
+use crate::HttpKey;
+use crate::commands::music::join;
 
 #[command]
 pub async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
@@ -34,7 +35,7 @@ pub async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
 
     // if not currently in voice channel, try to join
     if let None = manager.get(guild_id) {
-        voice::join(ctx, msg, args)
+        join::join(ctx, msg, args)
             .await
             .expect("Voice channel connection failed.");
     }
