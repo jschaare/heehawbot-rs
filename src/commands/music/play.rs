@@ -10,6 +10,7 @@ use crate::commands::music::join;
 
 #[command]
 pub async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    let orig_args = args.clone();
     let url = match args.single::<String>() {
         Ok(url) => url,
         Err(_) => {
@@ -43,14 +44,21 @@ pub async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
-        let src = YoutubeDl::new(http_client, url);
+        let src = if !url.starts_with("http") {
+            // just search for all the args
+            let search = orig_args.message().to_string();
+            msg.reply(ctx, format!("Searching for \"{}\"!", search)).await?;
+            YoutubeDl::new_search(http_client, search)
+        } else {
+            YoutubeDl::new(http_client, url)
+        };
 
         // enqueue using songbird built-in queue
         let _ = handler.enqueue_input(src.clone().into()).await;
 
         let queue_len = handler.queue().len();
         if queue_len > 1 {
-            msg.reply(ctx,  format!("Queued song at position {}!", queue_len - 1)).await?;
+            msg.reply(ctx, format!("Queued song at position {}!", queue_len - 1)).await?;
         } else {
             msg.reply(ctx, "Playing song").await?;
         }
