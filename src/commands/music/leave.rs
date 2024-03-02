@@ -1,6 +1,6 @@
 use crate::{CommandResult, Context};
 
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, ephemeral)]
 pub async fn leave(ctx: Context<'_>) -> CommandResult {
     let guild_id = ctx.guild_id().unwrap();
 
