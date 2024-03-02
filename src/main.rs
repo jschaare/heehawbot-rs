@@ -26,7 +26,7 @@ impl TypeMapKey for HttpKey {
 
 #[tokio::main]
 async fn main() {
-    dotenv::dotenv().expect("Failed to setup environment");
+    dotenv::dotenv().ok();
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
     let intents = GatewayIntents::non_privileged()
