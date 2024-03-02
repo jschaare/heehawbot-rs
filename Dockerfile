@@ -8,12 +8,14 @@ WORKDIR /
 
 FROM builder-base as builder
 WORKDIR /usr/src/heehawbot
-COPY ./Cargo.lock ./Cargo.lock
-COPY ./Cargo.toml ./Cargo.toml
+# add actual project dependencies
+COPY ./Cargo.lock ./Cargo.toml ./
+# build dummy project to cache dependencies and speed up builds
 RUN mkdir src && \
-    echo "// cache build" > src/lib.rs && \
-    cargo build --release --locked && \
-    rm -r src
+    echo "fn main() {println!(\"should never see this...\")}" > src/main.rs && \
+    cargo build --release --locked
+RUN rm -f target/release/deps/heehawbot*
+# build actual project, should be faster if dependencies didn't change
 COPY ./src ./src
 RUN cargo install --locked --path .
 WORKDIR /
