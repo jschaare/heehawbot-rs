@@ -1,22 +1,17 @@
-use serenity::{
-    client::Context,
-    framework::standard::{macros::command, CommandResult},
-    model::channel::Message,
-};
+use crate::{CommandResult, Context};
 
-#[command]
-#[only_in(guilds)]
-pub async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
-    let guild_id = msg.guild_id.unwrap();
+#[poise::command(slash_command, prefix_command)]
+pub async fn leave(ctx: Context<'_>) -> CommandResult {
+    let guild_id = ctx.guild_id().unwrap();
 
-    let manager = songbird::get(ctx)
+    let manager = songbird::get(ctx.serenity_context())
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
 
     if manager.get(guild_id).is_some() {
         manager.remove(guild_id).await.expect("Failed to leave");
-        msg.reply(ctx, "Left voice channel").await?;
+        ctx.say("Left voice channel").await?;
     }
 
     Ok(())

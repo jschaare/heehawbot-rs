@@ -1,14 +1,10 @@
-use serenity::{
-    client::Context,
-    framework::standard::{macros::command, CommandResult},
-    model::channel::Message,
-};
+use crate::{CommandResult, Context};
 
-#[command]
-pub async fn skip(ctx: &Context, msg: &Message) -> CommandResult {
-    let guild_id = msg.guild_id.unwrap();
+#[poise::command(slash_command, prefix_command)]
+pub async fn skip(ctx: Context<'_>) -> CommandResult {
+    let guild_id = ctx.guild_id().unwrap();
 
-    let manager = songbird::get(ctx)
+    let manager = songbird::get(ctx.serenity_context())
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
@@ -16,15 +12,15 @@ pub async fn skip(ctx: &Context, msg: &Message) -> CommandResult {
     if let Some(handler_lock) = manager.get(guild_id) {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
-        if queue.len() == 1 {
-            msg.reply(ctx, "No songs to skip").await?;
-            return Ok(())
+        if queue.len() == 0 {
+            ctx.say("No songs to skip").await?;
+            return Ok(());
         }
         queue.skip().expect("failed to skip");
 
-        msg.reply(ctx, "Skipped song").await?;
+        ctx.say("Skipped song").await?;
     } else {
-        msg.reply(ctx, "Not in a voice channel to skip in").await?;
+        ctx.say("Not in a voice channel to skip in").await?;
     }
     Ok(())
 }

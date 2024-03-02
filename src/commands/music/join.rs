@@ -1,9 +1,6 @@
-use serenity::{
-    async_trait,
-    client::Context,
-    framework::standard::{macros::command, CommandResult},
-    model::channel::Message,
-};
+use crate::{CommandResult, Context};
+
+use serenity::async_trait;
 use songbird::events::{Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent};
 
 struct TrackErrorNotifier;
@@ -25,34 +22,31 @@ impl VoiceEventHandler for TrackErrorNotifier {
     }
 }
 
-#[command]
-#[only_in(guilds)]
-pub async fn join(ctx: &Context, msg: &Message) -> CommandResult {
-    let (guild_id, channel_id) = {
-        let guild = msg.guild(&ctx.cache).unwrap();
-        let channel_id = guild
-            .voice_states
-            .get(&msg.author.id)
-            .and_then(|voice_state| voice_state.channel_id);
+#[poise::command(slash_command, prefix_command)]
+pub async fn join(ctx: Context<'_>) -> CommandResult {
+    let guild_id = ctx.guild_id().unwrap();
+    let voice_channel = ctx
+        .guild()
+        .unwrap()
+        .voice_states
+        .get(&ctx.author().id)
+        .and_then(|v| v.channel_id);
 
-        (guild.id, channel_id)
-    };
-
-    let connect_to = match channel_id {
+    let channel_id = match voice_channel {
         Some(channel) => channel,
         None => {
-            msg.reply(ctx, "Not in a voice channel").await?;
+            ctx.say("Voice Channel not found.").await?;
 
             return Ok(());
         }
     };
 
-    let manager = songbird::get(ctx)
+    let manager = songbird::get(ctx.serenity_context())
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
 
-    if let Ok(handler_lock) = manager.join(guild_id, connect_to).await {
+    if let Ok(handler_lock) = manager.join(guild_id, channel_id).await {
         // Attach an event handler to see notifications of all track errors.
         let mut handler = handler_lock.lock().await;
         handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);

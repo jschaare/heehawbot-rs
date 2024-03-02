@@ -1,40 +1,22 @@
-use std::env;
+pub mod callbacks;
+pub mod commands;
+pub mod error;
 
+use poise::serenity_prelude as serenity;
 use reqwest::Client as HttpClient;
 use serenity::{
-    async_trait,
-    client::{Client, Context, EventHandler},
-    framework::{
-        standard::{macros::group, Configuration},
-        StandardFramework,
-    },
-    model::gateway::Ready,
+    client::Client,
     prelude::{GatewayIntents, TypeMapKey},
 };
 use songbird::SerenityInit;
+use std::env;
 
-mod commands;
-use commands::{
-    music::{join::JOIN_COMMAND, leave::LEAVE_COMMAND, play::PLAY_COMMAND, skip::SKIP_COMMAND},
-    ping::PING_COMMAND,
-};
+use error::BotError;
 
-#[group]
-#[commands(ping)]
-struct General;
-
-#[group]
-#[commands(join, leave, play, skip)]
-struct Music;
-
-struct Handler;
-
-#[async_trait]
-impl EventHandler for Handler {
-    async fn ready(&self, _: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
-    }
-}
+pub struct Data {}
+pub type Context<'a> = poise::Context<'a, Data, BotError>;
+pub type Result<T> = std::result::Result<T, BotError>;
+pub type CommandResult = Result<()>;
 
 struct HttpKey;
 
@@ -46,18 +28,32 @@ impl TypeMapKey for HttpKey {
 async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
     let intents = GatewayIntents::non_privileged()
-        | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT
-        | GatewayIntents::GUILD_VOICE_STATES;
+        | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::GUILD_VOICE_STATES
+        | GatewayIntents::MESSAGE_CONTENT;
 
-    let framework = StandardFramework::new()
-        .group(&GENERAL_GROUP)
-        .group(&MUSIC_GROUP);
-    framework.configure(Configuration::new().prefix("!"));
+    let framework = poise::Framework::builder()
+        .options(poise::FrameworkOptions {
+            commands: vec![
+                commands::utils::age::age(),
+                commands::utils::ping::ping(),
+                commands::music::join::join(),
+                commands::music::leave::leave(),
+                commands::music::play::play(),
+                commands::music::skip::skip(),
+            ],
+            prefix_options: poise::PrefixFrameworkOptions {
+                prefix: Some("!".into()),
+                case_insensitive_commands: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .setup(|ctx, ready, framework| Box::pin(callbacks::on_ready(ctx, ready, framework)))
+        .build();
 
     let mut client = Client::builder(&token, intents)
-        .event_handler(Handler)
         .framework(framework)
         .register_songbird()
         .type_map_insert::<HttpKey>(HttpClient::new())
