@@ -8,7 +8,7 @@ pub async fn play(
     ctx: Context<'_>,
     #[description = "url or search query"]
     #[rest]
-    url: String,
+    query: String,
 ) -> CommandResult {
     let guild_id = ctx.guild_id().unwrap();
 
@@ -24,25 +24,31 @@ pub async fn play(
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
 
-    {
-        // if not currently in voice channel, try to join
-        join::join_channel(ctx).await?;
+    // if not currently in voice channel, try to join
+    if !join::join_channel(ctx).await {
+        ctx.send(
+            CreateReply::default()
+                .content("Voice Channel not found.")
+                .ephemeral(true),
+        )
+        .await?;
+        return Ok(())
     }
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
-        let src = if !url.starts_with("http") {
+        let src = if !query.starts_with("http") {
             // just search for all the args
             ctx.send(
                 CreateReply::default()
-                    .content(format!("Searching for \"**{}**\"!", url))
+                    .content(format!("Searching for \"**{}**\"!", query))
                     .ephemeral(true),
             )
             .await?;
-            YoutubeDl::new_search(http_client, url)
+            YoutubeDl::new_search(http_client, query)
         } else {
-            YoutubeDl::new(http_client, url)
+            YoutubeDl::new(http_client, query)
         };
 
         let mut src: songbird::input::Input = src.clone().into();

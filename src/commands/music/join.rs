@@ -1,5 +1,6 @@
 use crate::{CommandResult, Context};
 
+use poise::CreateReply;
 use serenity::async_trait;
 use songbird::events::{Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent};
 
@@ -22,7 +23,7 @@ impl VoiceEventHandler for TrackErrorNotifier {
     }
 }
 
-pub async fn join_channel(ctx: Context<'_>) -> CommandResult {
+pub async fn join_channel(ctx: Context<'_>) -> bool {
     let guild_id = ctx.guild_id().unwrap();
     let voice_channel = ctx
         .guild()
@@ -34,9 +35,7 @@ pub async fn join_channel(ctx: Context<'_>) -> CommandResult {
     let channel_id = match voice_channel {
         Some(channel) => channel,
         None => {
-            ctx.say("Voice Channel not found.").await?;
-
-            return Ok(());
+            return false;
         }
     };
 
@@ -51,10 +50,18 @@ pub async fn join_channel(ctx: Context<'_>) -> CommandResult {
         handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);
     }
 
-    Ok(())
+    return true;
 }
 
 #[poise::command(slash_command, prefix_command, ephemeral)]
 pub async fn join(ctx: Context<'_>) -> CommandResult {
-    join_channel(ctx).await
+    if join_channel(ctx).await {
+        ctx.send(
+            CreateReply::default()
+                .content("Voice Channel not found.")
+                .ephemeral(true),
+        )
+        .await?;
+    }
+    Ok(())
 }
