@@ -5,6 +5,8 @@ use poise::{
     serenity_prelude::{Context as SerenityContext, Ready},
     Framework,
 };
+#[cfg(not(debug_assertions))]
+use serenity::all::Command;
 
 pub async fn on_ready<'a>(
     ctx: &SerenityContext,
@@ -14,22 +16,35 @@ pub async fn on_ready<'a>(
     println!("{} is connected!", ready.user.name);
 
     #[cfg(not(debug_assertions))]
-    poise::builtins::register_globally(ctx, framework.options().commands.as_slice())
-        .await
-        .expect("Failed to register commands globally");
+    {
+        let old_commands = Command::get_global_commands(&ctx.http)
+            .await
+            .expect("Failed to get global commands");
+        for command in old_commands {
+            Command::delete_global_command(&ctx.http, command.id)
+                .await
+                .expect("Failed to delete global command");
+        }
+
+        poise::builtins::register_globally(ctx, framework.options().commands.as_slice())
+            .await
+            .expect("Failed to register commands globally");
+    }
 
     #[cfg(debug_assertions)]
-    poise::builtins::register_in_guild(
-        ctx,
-        framework.options().commands.as_slice(),
-        std::env::var("DEV_SERVER_ID")
-            .expect("`DEV_SERVER_ID` not found in dev build")
-            .parse::<u64>()
-            .expect("Invalid value for `DEV_SERVER_ID`")
-            .into(),
-    )
-    .await
-    .expect("Failed to register commands in dev guild");
+    {
+        poise::builtins::register_in_guild(
+            ctx,
+            framework.options().commands.as_slice(),
+            std::env::var("DEV_SERVER_ID")
+                .expect("`DEV_SERVER_ID` not found in dev build")
+                .parse::<u64>()
+                .expect("Invalid value for `DEV_SERVER_ID`")
+                .into(),
+        )
+        .await
+        .expect("Failed to register commands in dev guild");
+    }
 
     Ok(Data {})
 }
