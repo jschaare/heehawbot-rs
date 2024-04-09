@@ -1,6 +1,7 @@
 use crate::{commands::music::join, CommandResult, Context, HttpKey};
 
 use poise::CreateReply;
+use serenity::all::{CreateEmbed, CreateEmbedFooter};
 use songbird::input::YoutubeDl;
 
 #[poise::command(slash_command, prefix_command)]
@@ -32,7 +33,7 @@ pub async fn play(
                 .ephemeral(true),
         )
         .await?;
-        return Ok(())
+        return Ok(());
     }
 
     if let Some(handler_lock) = manager.get(guild_id) {
@@ -66,23 +67,35 @@ pub async fn play(
             Some(url) => url,
             None => "".to_string(),
         };
+        let thumbnail_url = match aux_metadata.thumbnail {
+            Some(thumbnail) => thumbnail,
+            None => "".to_string(),
+        };
+        let author = ctx.author();
+        let author_name = match &author.global_name {
+            Some(name) => name,
+            None => &author.name,
+        };
+        let author_icon_url = match author.avatar_url() {
+            Some(url) => url,
+            None => "".to_string(),
+        };
 
         // enqueue using songbird built-in queue
         handler.enqueue_input(src).await;
 
-        let queue_len = handler.queue().len();
-        if queue_len > 1 {
-            ctx.say(format!(
-                "Queued song **{}** at position {}!\n{}",
-                title,
-                queue_len - 1,
-                source_url,
-            ))
-            .await?;
-        } else {
-            ctx.say(format!("Playing song **{}**\n{}", title, source_url))
-                .await?;
-        }
+        ctx.send(
+            CreateReply::default().embed(
+                CreateEmbed::default()
+                    .field("Title", format!("[{title}]({source_url})"), false)
+                    .thumbnail(thumbnail_url)
+                    .footer(
+                        CreateEmbedFooter::new(format!("Queued by {author_name}"))
+                            .icon_url(author_icon_url),
+                    ),
+            ),
+        )
+        .await?;
     } else {
         ctx.say("Not in a voice channel to play in").await?;
     }
