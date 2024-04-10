@@ -29,7 +29,7 @@ pub async fn play(
     if !join::join_channel(ctx).await {
         ctx.send(
             CreateReply::default()
-                .content("Voice Channel not found.")
+                .content("You are not in a voice channel, please join one.")
                 .ephemeral(true),
         )
         .await?;
@@ -98,7 +98,7 @@ pub async fn play(
         )
         .await?;
     } else {
-        ctx.say("Not in a voice channel to play in").await?;
+        ctx.say("Unable to play your song, oops...").await?;
     }
 
     Ok(())
