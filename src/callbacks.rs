@@ -17,15 +17,6 @@ pub async fn on_ready<'a>(
 
     #[cfg(not(debug_assertions))]
     {
-        let old_commands = Command::get_global_commands(&ctx.http)
-            .await
-            .expect("Failed to get global commands");
-        for command in old_commands {
-            Command::delete_global_command(&ctx.http, command.id)
-                .await
-                .expect("Failed to delete global command");
-        }
-
         poise::builtins::register_globally(ctx, framework.options().commands.as_slice())
             .await
             .expect("Failed to register commands globally");
