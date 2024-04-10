@@ -5,8 +5,6 @@ use poise::{
     serenity_prelude::{Context as SerenityContext, Ready},
     Framework,
 };
-#[cfg(not(debug_assertions))]
-use serenity::all::Command;
 
 pub async fn on_ready<'a>(
     ctx: &SerenityContext,

@@ -87,7 +87,8 @@ pub async fn play(
         ctx.send(
             CreateReply::default().embed(
                 CreateEmbed::default()
-                    .field("Title", format!("[{title}]({source_url})"), false)
+                    .title(title)
+                    .url(source_url)
                     .thumbnail(thumbnail_url)
                     .footer(
                         CreateEmbedFooter::new(format!("Queued by {author_name}"))
