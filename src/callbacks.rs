@@ -5,13 +5,14 @@ use poise::{
     serenity_prelude::{Context as SerenityContext, Ready},
     Framework,
 };
+use tracing::info;
 
 pub async fn on_ready<'a>(
     ctx: &SerenityContext,
     ready: &Ready,
     framework: &Framework<Data, BotError>,
 ) -> Result<Data> {
-    println!("{} is connected!", ready.user.name);
+    info!("{} is connected!", ready.user.name);
 
     #[cfg(not(debug_assertions))]
     {

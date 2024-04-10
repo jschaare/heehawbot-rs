@@ -10,6 +10,8 @@ use serenity::{
 };
 use songbird::SerenityInit;
 use std::env;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::EnvFilter;
 
 use error::BotError;
 
@@ -35,6 +37,23 @@ async fn main() {
         | GatewayIntents::GUILD_VOICE_STATES
         | GatewayIntents::MESSAGE_CONTENT;
 
+    let pkg_name = env!("CARGO_PKG_NAME").replace('-', "_");
+    let level_string = env::var(EnvFilter::DEFAULT_ENV).unwrap_or_else(|_| "info".to_string());
+    let filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::WARN.into())
+        .from_env()
+        .expect("Expected an env filter")
+        .add_directive(
+            format!("{}={}", pkg_name, level_string)
+                .parse()
+                .expect("Expected a directive"),
+        );
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .compact()
+        .init();
+
+    tracing::info!("{} is starting", pkg_name);
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: vec![
@@ -66,12 +85,12 @@ async fn main() {
         let _ = client
             .start()
             .await
-            .map_err(|why| println!("Client ended: {:?}", why));
+            .map_err(|why| tracing::error!("client terminated: {:?}", why));
     });
 
     tokio::signal::ctrl_c()
         .await
-        .map_err(|why| println!("Failed to handle Ctrl-C signal: {:?}", why))
+        .map_err(|why| tracing::error!("failed to handle ctrl-c signal: {:?}", why))
         .ok();
-    println!("Received Ctrl-C, shutting down.");
+    tracing::info!("received sigtem, {} is shutting down", pkg_name);
 }

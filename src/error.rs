@@ -1,6 +1,6 @@
-use log::debug;
 use poise::serenity_prelude::{self as serenity, prelude::SerenityError};
 use std::sync::Arc;
+use tracing::warn;
 
 use crate::Context;
 
@@ -20,7 +20,7 @@ impl BotError {
     pub async fn handle(&self, ctx: Context<'_>) {
         match self {
             BotError::SerenityError(err) => {
-                debug!("Discord Error: {}", err);
+                warn!("Discord Error: {}", err);
                 ctx.say("Error with the command, file an issue.").await.ok();
             }
         }

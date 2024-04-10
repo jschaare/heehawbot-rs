@@ -7,6 +7,7 @@ use serenity::all::{Cache, ChannelId, GuildId, Http};
 use serenity::async_trait;
 use songbird::events::{Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent};
 use songbird::Songbird;
+use tracing::{error, info};
 
 struct TrackErrorNotifier;
 
@@ -42,8 +43,12 @@ impl VoiceEventHandler for AutoLeaveHandler {
             if let Some(guild_channel) = channel.guild() {
                 if let Ok(members) = guild_channel.members(&self.cache) {
                     if members.len() <= 1 {
-                        if let Err(err) = self.manager.remove(self.guild_id).await {
-                            println!("Failed to leave after track end: {err}");
+                        match self.manager.remove(self.guild_id).await {
+                            Ok(()) => info!(
+                                "guild={} channel={} left automatically",
+                                self.guild_id, self.voice_channel_id
+                            ),
+                            Err(err) => error!("failed to leave automatically: {}", err),
                         }
                     }
                 }
@@ -54,6 +59,7 @@ impl VoiceEventHandler for AutoLeaveHandler {
 }
 
 pub async fn join_channel(ctx: Context<'_>) -> bool {
+    let author = ctx.author();
     let guild_id = ctx.guild_id().unwrap();
     let voice_channel = ctx
         .guild()
@@ -75,6 +81,11 @@ pub async fn join_channel(ctx: Context<'_>) -> bool {
         .clone();
 
     if let Ok(handler_lock) = manager.join(guild_id, channel_id).await {
+        info!(
+            "guild={} user(name=\"{}\",id={}) connected bot to voicechannel={}",
+            guild_id, &author.name, &author.id, channel_id
+        );
+
         // Attach an event handler to see notifications of all track errors.
         let mut handler = handler_lock.lock().await;
         let handler_http = ctx.serenity_context().http.clone();

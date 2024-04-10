@@ -3,6 +3,7 @@ use crate::{commands::music::join, CommandResult, Context, HttpKey};
 use poise::CreateReply;
 use serenity::all::{CreateEmbed, CreateEmbedFooter};
 use songbird::input::YoutubeDl;
+use tracing::info;
 
 #[poise::command(slash_command, prefix_command)]
 pub async fn play(
@@ -11,6 +12,7 @@ pub async fn play(
     #[rest]
     query: String,
 ) -> CommandResult {
+    let author = ctx.author();
     let guild_id = ctx.guild_id().unwrap();
 
     let http_client = {
@@ -71,7 +73,6 @@ pub async fn play(
             Some(thumbnail) => thumbnail,
             None => "".to_string(),
         };
-        let author = ctx.author();
         let author_name = match &author.global_name {
             Some(name) => name,
             None => &author.name,
@@ -80,6 +81,11 @@ pub async fn play(
             Some(url) => url,
             None => "".to_string(),
         };
+
+        info!(
+            "guild={} user(name=\"{}\",id={}) queued url=({})",
+            guild_id, &author.name, &author.id, source_url
+        );
 
         // enqueue using songbird built-in queue
         handler.enqueue_input(src).await;
