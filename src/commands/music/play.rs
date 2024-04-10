@@ -1,69 +1,110 @@
-use serenity::{
-    client::Context,
-    framework::standard::{macros::command, Args, CommandResult},
-    model::channel::Message,
-};
+use crate::{commands::music::join, CommandResult, Context, HttpKey};
+
+use poise::CreateReply;
+use serenity::all::{CreateEmbed, CreateEmbedFooter};
 use songbird::input::YoutubeDl;
+use tracing::info;
 
-use crate::HttpKey;
-use crate::commands::music::join;
-
-#[command]
-pub async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    let orig_args = args.clone();
-    let url = match args.single::<String>() {
-        Ok(url) => url,
-        Err(_) => {
-            msg.reply(ctx, "Please provide a URL to a song or video")
-                .await?;
-            return Ok(());
-        }
-    };
-
-    let guild_id = msg.guild_id.unwrap();
+#[poise::command(slash_command, prefix_command)]
+pub async fn play(
+    ctx: Context<'_>,
+    #[description = "url or search query"]
+    #[rest]
+    query: String,
+) -> CommandResult {
+    let author = ctx.author();
+    let guild_id = ctx.guild_id().unwrap();
 
     let http_client = {
-        let data = ctx.data.read().await;
+        let data = ctx.serenity_context().data.read().await;
         data.get::<HttpKey>()
             .cloned()
             .expect("Guaranteed to exist in the typemap.")
     };
 
-    let manager = songbird::get(ctx)
+    let manager = songbird::get(ctx.serenity_context())
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
 
     // if not currently in voice channel, try to join
-    if let None = manager.get(guild_id) {
-        join::join(ctx, msg, args)
-            .await
-            .expect("Voice channel connection failed.");
+    if !join::join_channel(ctx).await {
+        ctx.send(
+            CreateReply::default()
+                .content("You are not in a voice channel, please join one.")
+                .ephemeral(true),
+        )
+        .await?;
+        return Ok(());
     }
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
-        let src = if !url.starts_with("http") {
+        let src = if !query.starts_with("http") {
             // just search for all the args
-            let search = orig_args.message().to_string();
-            msg.reply(ctx, format!("Searching for \"{}\"!", search)).await?;
-            YoutubeDl::new_search(http_client, search)
+            ctx.send(
+                CreateReply::default()
+                    .content(format!("Searching for \"**{}**\"!", query))
+                    .ephemeral(true),
+            )
+            .await?;
+            YoutubeDl::new_search(http_client, query)
         } else {
-            YoutubeDl::new(http_client, url)
+            YoutubeDl::new(http_client, query)
         };
 
-        // enqueue using songbird built-in queue
-        let _ = handler.enqueue_input(src.clone().into()).await;
+        let mut src: songbird::input::Input = src.clone().into();
 
-        let queue_len = handler.queue().len();
-        if queue_len > 1 {
-            msg.reply(ctx, format!("Queued song at position {}!", queue_len - 1)).await?;
-        } else {
-            msg.reply(ctx, "Playing song").await?;
-        }
+        // extract metadata about song
+        let aux_metadata = match src.aux_metadata().await {
+            Ok(metadata) => metadata,
+            Err(_e) => return Ok(()),
+        };
+        let title = match aux_metadata.title.clone() {
+            Some(t) => t,
+            None => "Unknown".to_string(),
+        };
+        let source_url = match aux_metadata.source_url.clone() {
+            Some(url) => url,
+            None => "".to_string(),
+        };
+        let thumbnail_url = match aux_metadata.thumbnail {
+            Some(thumbnail) => thumbnail,
+            None => "".to_string(),
+        };
+        let author_name = match &author.global_name {
+            Some(name) => name,
+            None => &author.name,
+        };
+        let author_icon_url = match author.avatar_url() {
+            Some(url) => url,
+            None => "".to_string(),
+        };
+
+        info!(
+            "guild={} user(name=\"{}\",id={}) queued url=({})",
+            guild_id, &author.name, &author.id, source_url
+        );
+
+        // enqueue using songbird built-in queue
+        handler.enqueue_input(src).await;
+
+        ctx.send(
+            CreateReply::default().embed(
+                CreateEmbed::default()
+                    .title(title)
+                    .url(source_url)
+                    .thumbnail(thumbnail_url)
+                    .footer(
+                        CreateEmbedFooter::new(format!("Queued by {author_name}"))
+                            .icon_url(author_icon_url),
+                    ),
+            ),
+        )
+        .await?;
     } else {
-        msg.reply(ctx, "Not in a voice channel to play in").await?;
+        ctx.say("Unable to play your song, oops...").await?;
     }
 
     Ok(())

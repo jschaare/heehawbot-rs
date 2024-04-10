@@ -1,10 +1,13 @@
-use serenity::{
-    async_trait,
-    client::Context,
-    framework::standard::{macros::command, CommandResult},
-    model::channel::Message,
-};
+use std::{sync::Arc, time::Duration};
+
+use crate::{CommandResult, Context};
+
+use poise::CreateReply;
+use serenity::all::{Cache, ChannelId, GuildId, Http};
+use serenity::async_trait;
 use songbird::events::{Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent};
+use songbird::Songbird;
+use tracing::{error, info};
 
 struct TrackErrorNotifier;
 
@@ -25,38 +28,93 @@ impl VoiceEventHandler for TrackErrorNotifier {
     }
 }
 
-#[command]
-#[only_in(guilds)]
-pub async fn join(ctx: &Context, msg: &Message) -> CommandResult {
-    let (guild_id, channel_id) = {
-        let guild = msg.guild(&ctx.cache).unwrap();
-        let channel_id = guild
-            .voice_states
-            .get(&msg.author.id)
-            .and_then(|voice_state| voice_state.channel_id);
+struct AutoLeaveHandler {
+    manager: Arc<Songbird>,
+    guild_id: GuildId,
+    voice_channel_id: ChannelId,
+    http: Arc<Http>,
+    cache: Arc<Cache>,
+}
 
-        (guild.id, channel_id)
-    };
+#[async_trait]
+impl VoiceEventHandler for AutoLeaveHandler {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        if let Ok(channel) = self.http.get_channel(self.voice_channel_id).await {
+            if let Some(guild_channel) = channel.guild() {
+                if let Ok(members) = guild_channel.members(&self.cache) {
+                    if members.len() <= 1 {
+                        match self.manager.remove(self.guild_id).await {
+                            Ok(()) => info!(
+                                "guild={} channel={} left automatically",
+                                self.guild_id, self.voice_channel_id
+                            ),
+                            Err(err) => error!("failed to leave automatically: {}", err),
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+}
 
-    let connect_to = match channel_id {
+pub async fn join_channel(ctx: Context<'_>) -> bool {
+    let author = ctx.author();
+    let guild_id = ctx.guild_id().unwrap();
+    let voice_channel = ctx
+        .guild()
+        .unwrap()
+        .voice_states
+        .get(&ctx.author().id)
+        .and_then(|v| v.channel_id);
+
+    let channel_id = match voice_channel {
         Some(channel) => channel,
         None => {
-            msg.reply(ctx, "Not in a voice channel").await?;
-
-            return Ok(());
+            return false;
         }
     };
 
-    let manager = songbird::get(ctx)
+    let manager = songbird::get(ctx.serenity_context())
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
 
-    if let Ok(handler_lock) = manager.join(guild_id, connect_to).await {
+    if let Ok(handler_lock) = manager.join(guild_id, channel_id).await {
+        info!(
+            "guild={} user(name=\"{}\",id={}) connected bot to voicechannel={}",
+            guild_id, &author.name, &author.id, channel_id
+        );
+
         // Attach an event handler to see notifications of all track errors.
         let mut handler = handler_lock.lock().await;
+        let handler_http = ctx.serenity_context().http.clone();
+        let handler_cache = ctx.serenity_context().cache.clone();
+
         handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);
+        handler.add_global_event(
+            Event::Periodic(Duration::from_secs(60), None),
+            AutoLeaveHandler {
+                manager,
+                guild_id,
+                voice_channel_id: channel_id,
+                http: handler_http,
+                cache: handler_cache,
+            },
+        )
     }
 
+    return true;
+}
+
+#[poise::command(slash_command, prefix_command, ephemeral)]
+pub async fn join(ctx: Context<'_>) -> CommandResult {
+    let join_msg = if join_channel(ctx).await {
+        "Joined voice channel!"
+    } else {
+        "You are not in a voice channel, please join one."
+    };
+    ctx.send(CreateReply::default().content(join_msg).ephemeral(true))
+        .await?;
     Ok(())
 }
