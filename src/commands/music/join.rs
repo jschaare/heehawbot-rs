@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use crate::{CommandResult, Context};
 
 use poise::CreateReply;
-use serenity::all::{Cache, ChannelId, GuildId, Http};
+use serenity::all::{Cache, ChannelId, ChannelType, GuildId, Http};
 use serenity::async_trait;
 use songbird::events::{Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent};
 use songbird::Songbird;
@@ -60,51 +60,70 @@ impl VoiceEventHandler for AutoLeaveHandler {
 
 pub async fn join_channel(ctx: Context<'_>) -> bool {
     let author = ctx.author();
-    let guild_id = ctx.guild_id().unwrap();
-    let voice_channel = ctx
-        .guild()
-        .unwrap()
-        .voice_states
-        .get(&ctx.author().id)
-        .and_then(|v| v.channel_id);
+    let serenity_ctx = ctx.serenity_context();
+    let guild_id = match ctx.guild_id() {
+        Some(id) => id,
+        None => {
+            return false;
+        }
+    };
+    let guild = match guild_id.channels(&serenity_ctx.http).await {
+        Ok(channels) => channels,
+        Err(_) => {
+            return false;
+        }
+    };
 
-    let channel_id = match voice_channel {
-        Some(channel) => channel,
+    let voice_channel = guild
+        .values()
+        .filter(|channel| channel.kind == ChannelType::Voice)
+        .find(|channel| {
+            let members = match channel.members(&serenity_ctx.cache) {
+                Ok(members) => members,
+                Err(_) => {
+                    return false;
+                }
+            };
+            members
+                .iter()
+                .any(|member| member.user.id == author.id)
+        });
+
+    let voice_channel_id = match voice_channel {
+        Some(channel) => channel.id,
         None => {
             return false;
         }
     };
 
-    let manager = songbird::get(ctx.serenity_context())
+    let manager = songbird::get(serenity_ctx)
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
 
-    if let Ok(handler_lock) = manager.join(guild_id, channel_id).await {
-        info!(
-            "guild={} user(name=\"{}\",id={}) connected bot to voicechannel={}",
-            guild_id, &author.name, &author.id, channel_id
-        );
+    match manager.join(guild_id, voice_channel_id).await {
+        Ok(call) => {
+            info!(
+                "guild={} user(name=\"{}\",id={}) connected bot to voicechannel={}",
+                guild_id, &author.name, &author.id, voice_channel_id
+            );
 
-        // Attach an event handler to see notifications of all track errors.
-        let mut handler = handler_lock.lock().await;
-        let handler_http = ctx.serenity_context().http.clone();
-        let handler_cache = ctx.serenity_context().cache.clone();
-
-        handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);
-        handler.add_global_event(
-            Event::Periodic(Duration::from_secs(60), None),
-            AutoLeaveHandler {
-                manager,
-                guild_id,
-                voice_channel_id: channel_id,
-                http: handler_http,
-                cache: handler_cache,
-            },
-        )
+            let mut handler = call.lock().await;
+            handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);
+            handler.add_global_event(
+                Event::Periodic(Duration::from_secs(60), None),
+                AutoLeaveHandler {
+                    manager,
+                    guild_id,
+                    voice_channel_id,
+                    http: serenity_ctx.http.clone(),
+                    cache: serenity_ctx.cache.clone(),
+                },
+            );
+            true
+        }
+        Err(_) => false
     }
-
-    return true;
 }
 
 #[poise::command(slash_command, prefix_command, ephemeral)]

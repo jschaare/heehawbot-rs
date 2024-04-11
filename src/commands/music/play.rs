@@ -14,16 +14,23 @@ pub async fn play(
     query: String,
 ) -> CommandResult {
     let author = ctx.author();
-    let guild_id = ctx.guild_id().unwrap();
+    let serenity_ctx = ctx.serenity_context();
+    let guild_id = match ctx.guild_id() {
+        Some(id) => id,
+        None => {
+            ctx.say("Can only use `/play` inside a guild").await?;
+            return Ok(());
+        }
+    };
 
     let http_client = {
-        let data = ctx.serenity_context().data.read().await;
+        let data = serenity_ctx.data.read().await;
         data.get::<HttpKey>()
             .cloned()
             .expect("Guaranteed to exist in the typemap.")
     };
 
-    let manager = songbird::get(ctx.serenity_context())
+    let manager = songbird::get(serenity_ctx)
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
