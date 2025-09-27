@@ -1,4 +1,4 @@
-FROM rust:1.74-alpine as builder-base
+FROM rust:1.74-alpine AS builder-base
 RUN apk add --update \
     make \
     cmake \
@@ -6,7 +6,7 @@ RUN apk add --update \
     musl-dev
 WORKDIR /
 
-FROM builder-base as builder
+FROM builder-base AS builder
 WORKDIR /usr/src/heehawbot
 # add actual project dependencies
 COPY ./Cargo.lock ./Cargo.toml ./
@@ -20,8 +20,9 @@ COPY ./src ./src
 RUN cargo install --locked --path .
 WORKDIR /
 
-FROM alpine:3.18 as runner
+FROM alpine:3.18 AS runner
 RUN apk add --no-cache python3 xz curl ffmpeg
+ARG CACHEBUST=1
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
 RUN chmod a+rx /usr/local/bin/yt-dlp
 COPY --from=builder /usr/local/cargo/bin/heehawbot /usr/local/bin/heehawbot
