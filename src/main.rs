@@ -63,6 +63,7 @@ async fn main() {
                 commands::music::leave::leave(),
                 commands::music::play::play(),
                 commands::music::skip::skip(),
+                commands::games::chess::play_chess(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("!".into()),
