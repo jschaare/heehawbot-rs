@@ -84,9 +84,7 @@ pub async fn join_channel(ctx: Context<'_>) -> bool {
                     return false;
                 }
             };
-            members
-                .iter()
-                .any(|member| member.user.id == author.id)
+            members.iter().any(|member| member.user.id == author.id)
         });
 
     let voice_channel_id = match voice_channel {
@@ -100,6 +98,15 @@ pub async fn join_channel(ctx: Context<'_>) -> bool {
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
+
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let handler = handler_lock.lock().await;
+        if let Some(bot_voice_channel_id) = handler.current_channel() {
+            if bot_voice_channel_id == voice_channel_id.into() {
+                return true;
+            }
+        }
+    }
 
     match manager.join(guild_id, voice_channel_id).await {
         Ok(call) => {
@@ -122,7 +129,7 @@ pub async fn join_channel(ctx: Context<'_>) -> bool {
             );
             true
         }
-        Err(_) => false
+        Err(_) => false,
     }
 }
 
