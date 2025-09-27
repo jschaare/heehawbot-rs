@@ -1,4 +1,4 @@
-FROM rust:1.74-alpine AS builder-base
+FROM rust:1.83-alpine AS builder-base
 RUN apk add --update \
     make \
     cmake \
