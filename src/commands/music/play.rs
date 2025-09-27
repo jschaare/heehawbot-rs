@@ -1,10 +1,93 @@
 use crate::{commands::music::join, CommandResult, Context, HttpKey};
 
 use poise::CreateReply;
+use reqwest::Client;
 use serenity::all::{CreateEmbed, CreateEmbedFooter};
-use songbird::input::YoutubeDl;
-use tracing::info;
+use songbird::input::{Compose, Input, LiveInput, YoutubeDl};
+use tracing::{error, info};
 use url::Url;
+
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
+
+async fn get_soundclound_stream(url: &str) -> Result<String, Error> {
+    let output = tokio::process::Command::new("yt-dlp")
+        .args([
+            "--no-playlist",
+            "-f",
+            "http_mp3_1_0/http_mp3/best[protocol=http]",
+            "--get-url",
+            "--extractor-args",
+            "soundcloud:force_api_v2",
+            url,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run yt-dlp: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "failed to extract url: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stream_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    info!("extracted : {}", stream_url);
+    Ok(stream_url)
+}
+
+pub fn is_soundcloud(u: &Url) -> bool {
+    match u.domain() {
+        Some(domain) => {
+            error!(domain);
+            domain.contains("soundcloud.com")
+                || domain.contains("snd.sc")
+                || domain.contains("sndcdn.com")
+        }
+        None => false,
+    }
+}
+
+async fn get_input(query: String, http_client: Client) -> Result<Input, Error> {
+    if let Ok(url) = Url::parse(&query) {
+        if is_soundcloud(&url) {
+            let stream_url = get_soundclound_stream(url.to_string().as_str()).await?;
+            // let mut source = YoutubeDl::new_search(http_client, url.to_string()).user_args(vec![
+            let mut ytdl = YoutubeDl::new(http_client, stream_url).user_args(vec![
+                "--no-playlist".into(),
+                "--socket-timeout".into(),
+                "60".into(),
+                "--retries".into(),
+                "5".into(),
+            ]);
+            let audio = ytdl.create_async().await.map_err(Error::from)?;
+            return Ok(Input::Live(LiveInput::Raw(audio), Some(Box::new(ytdl))));
+        } else {
+            let mut ytdl = YoutubeDl::new(http_client, url.to_string());
+            return Ok(Input::Live(
+                LiveInput::Raw(ytdl.create_async().await.map_err(Error::from)?),
+                Some(Box::new(ytdl)),
+            ));
+        }
+    }
+
+    let mut ytdl = YoutubeDl::new_search(http_client, query).user_args(vec![
+        "--no-playlist".into(),
+        "-f".into(),
+        "http_mp3/best[protocol!=m3u8][protocol!=hls]/bestaudio/best".into(),
+        "--extractor-args".into(),
+        "soundcloud:force_api_v2".into(),
+        "--no-check-certificates".into(),
+        "--prefer-free-formats".into(),
+        "--socket-timeout".into(),
+        "30".into(),
+        "--retries".into(),
+        "3".into(),
+    ]);
+    let audio = ytdl.create_async().await.map_err(Error::from)?;
+    Ok(Input::Live(LiveInput::Raw(audio), Some(Box::new(ytdl))))
+}
 
 #[poise::command(slash_command, prefix_command)]
 pub async fn play(
@@ -59,18 +142,20 @@ pub async fn play(
             )
             .await?;
 
-        let src = if let Ok(url) = Url::parse(&query) {
-            YoutubeDl::new(http_client, url.to_string())
-        } else {
-            YoutubeDl::new_search(http_client, query)
+        let mut src = match get_input(query, http_client).await {
+            Ok(src) => src,
+            Err(e) => {
+                error!(error = %e);
+                ctx.say("Unable to play your song, oops...").await?;
+                return Ok(());
+            }
         };
-
-        let mut src: songbird::input::Input = src.clone().into();
 
         // extract metadata about song
         let aux_metadata = match src.aux_metadata().await {
             Ok(metadata) => metadata,
-            Err(_e) => {
+            Err(e) => {
+                error!(error = %e);
                 ctx.say("Unable to play your song, oops...").await?;
                 return Ok(());
             }
