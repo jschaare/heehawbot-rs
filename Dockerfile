@@ -20,7 +20,7 @@ COPY ./src ./src
 RUN cargo install --locked --path .
 WORKDIR /
 
-FROM alpine:3.18 AS runner
+FROM alpine:3.22 AS runner
 RUN apk add --no-cache python3 xz curl ffmpeg
 ARG CACHEBUST=1
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
