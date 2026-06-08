@@ -5,8 +5,8 @@ use crate::{CommandResult, Context};
 use poise::CreateReply;
 use serenity::all::{Cache, ChannelId, ChannelType, GuildId, Http};
 use serenity::async_trait;
-use songbird::events::{Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent};
 use songbird::Songbird;
+use songbird::events::{Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent};
 use tracing::{error, info};
 
 struct TrackErrorNotifier;
@@ -84,9 +84,7 @@ pub async fn join_channel(ctx: Context<'_>) -> bool {
                     return false;
                 }
             };
-            members
-                .iter()
-                .any(|member| member.user.id == author.id)
+            members.iter().any(|member| member.user.id == author.id)
         });
 
     let voice_channel_id = match voice_channel {
@@ -100,6 +98,16 @@ pub async fn join_channel(ctx: Context<'_>) -> bool {
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
+
+    // check if bot is already in the correct voice channel for this guild
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let handler = handler_lock.lock().await;
+        if let Some(bot_voice_channel_id) = handler.current_channel() {
+            if bot_voice_channel_id == voice_channel_id.into() {
+                return true;
+            }
+        }
+    }
 
     match manager.join(guild_id, voice_channel_id).await {
         Ok(call) => {
@@ -122,7 +130,7 @@ pub async fn join_channel(ctx: Context<'_>) -> bool {
             );
             true
         }
-        Err(_) => false
+        Err(_) => false,
     }
 }
 
