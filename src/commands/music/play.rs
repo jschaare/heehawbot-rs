@@ -1,9 +1,9 @@
-use crate::{commands::music::join, CommandResult, Context, HttpKey};
+use crate::{CommandResult, Context, HttpKey, commands::music::join};
 
 use poise::CreateReply;
 use serenity::all::{CreateEmbed, CreateEmbedFooter};
 use songbird::input::YoutubeDl;
-use tracing::info;
+use tracing::{error, info, warn};
 use url::Url;
 
 #[poise::command(slash_command, prefix_command)]
@@ -62,7 +62,7 @@ pub async fn play(
         let src = if let Ok(url) = Url::parse(&query) {
             YoutubeDl::new(http_client, url.to_string())
         } else {
-            YoutubeDl::new_search(http_client, query)
+            YoutubeDl::new_search(http_client, query.clone())
         };
 
         let mut src: songbird::input::Input = src.clone().into();
@@ -70,7 +70,8 @@ pub async fn play(
         // extract metadata about song
         let aux_metadata = match src.aux_metadata().await {
             Ok(metadata) => metadata,
-            Err(_e) => {
+            Err(e) => {
+                error!("could not find metadata for query={} error={}", &query, e);
                 ctx.say("Unable to play your song, oops...").await?;
                 return Ok(());
             }
@@ -120,6 +121,7 @@ pub async fn play(
             )
             .await?;
     } else {
+        warn!("could not find guild={}", guild_id);
         ctx.say("Unable to play your song, oops...").await?;
     }
 

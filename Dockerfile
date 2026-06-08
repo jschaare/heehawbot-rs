@@ -1,12 +1,14 @@
-FROM rust:1.74-alpine as builder-base
-RUN apk add --update \
-    make \
+FROM rust:1.96-alpine AS builder-base
+RUN apk add --update --no-cache \
+    alpine-sdk \
+    pkgconf \
     cmake \
-    libressl-dev \
+    openssl-dev \
+    openssl-libs-static \
     musl-dev
 WORKDIR /
 
-FROM builder-base as builder
+FROM builder-base AS builder
 WORKDIR /usr/src/heehawbot
 # add actual project dependencies
 COPY ./Cargo.lock ./Cargo.toml ./
@@ -20,9 +22,13 @@ COPY ./src ./src
 RUN cargo install --locked --path .
 WORKDIR /
 
-FROM alpine:3.18 as runner
-RUN apk add --no-cache python3 xz curl ffmpeg
-RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-RUN chmod a+rx /usr/local/bin/yt-dlp
+FROM alpine:latest AS runner
+RUN apk add --update --no-cache \
+    ffmpeg \
+    python3 \
+    py3-pip \
+    libgcc \
+    ca-certificates
+RUN pip install --break-system-packages yt-dlp
 COPY --from=builder /usr/local/cargo/bin/heehawbot /usr/local/bin/heehawbot
 CMD ["heehawbot"]
