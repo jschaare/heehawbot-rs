@@ -26,9 +26,8 @@ FROM alpine:latest AS runner
 RUN apk add --update --no-cache \
     ffmpeg \
     python3 \
-    py3-pip \
     libgcc \
     ca-certificates
-RUN pip install --break-system-packages yt-dlp
+ADD --chmod=755 https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp /usr/local/bin/yt-dlp
 COPY --from=builder /usr/local/cargo/bin/heehawbot /usr/local/bin/heehawbot
 CMD ["heehawbot"]
