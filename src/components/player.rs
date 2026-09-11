@@ -7,7 +7,7 @@ use reqwest::Client as HttpClient;
 use serenity::all::{
     ButtonStyle, Cache, ChannelId, ChannelType, ComponentInteraction, CreateActionRow,
     CreateButton, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateMessage,
-    EditMessage, GuildId, Http, MessageId, User,
+    EditMessage, GuildId, Http, MessageFlags, MessageId, User,
 };
 use serenity::async_trait;
 use songbird::events::{Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent};
@@ -288,7 +288,10 @@ impl Player {
         match channel_id
             .send_message(
                 &self.http,
-                CreateMessage::new().embed(embed).components(components),
+                CreateMessage::new()
+                    .embed(embed)
+                    .components(components)
+                    .flags(MessageFlags::SUPPRESS_NOTIFICATIONS),
             )
             .await
         {
