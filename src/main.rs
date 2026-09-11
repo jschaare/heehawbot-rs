@@ -1,5 +1,6 @@
 pub mod callbacks;
 pub mod commands;
+pub mod components;
 pub mod error;
 
 use poise::serenity_prelude as serenity;
@@ -15,7 +16,9 @@ use tracing_subscriber::EnvFilter;
 
 use error::BotError;
 
-pub struct Data {}
+pub struct Data {
+    pub players: components::player::Players,
+}
 pub type Context<'a> = poise::Context<'a, Data, BotError>;
 pub type Result<T> = std::result::Result<T, BotError>;
 pub type CommandResult = Result<()>;
@@ -63,8 +66,23 @@ async fn main() {
                 commands::music::leave::leave(),
                 commands::music::play::play(),
                 commands::music::skip::skip(),
+                commands::music::pause::pause(),
+                commands::music::resume::resume(),
+                commands::music::clear::clear(),
+                commands::music::queue::queue(),
                 commands::games::chess::play_chess(),
             ],
+            event_handler: |ctx, event, _framework, data| {
+                Box::pin(async move {
+                    if let serenity::FullEvent::InteractionCreate { interaction } = event
+                        && let Some(component) = interaction.as_message_component()
+                        && component.data.custom_id.starts_with("player:")
+                    {
+                        components::player::handle_component(ctx, component, &data.players).await?;
+                    }
+                    Ok(())
+                })
+            },
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("!".into()),
                 case_insensitive_commands: true,

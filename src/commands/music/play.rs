@@ -1,42 +1,17 @@
-use crate::{CommandResult, Context, HttpKey, commands::music::join};
+use crate::components::player::{Player, queued_embed};
+use crate::{CommandResult, Context, HttpKey};
 
 use poise::CreateReply;
-use serenity::all::{CreateEmbed, CreateEmbedFooter};
-use songbird::input::YoutubeDl;
-use tracing::{error, info, warn};
-use url::Url;
+use serenity::all::CreateEmbed;
 
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn play(
     ctx: Context<'_>,
     #[description = "url or search query"]
     #[rest]
     query: String,
 ) -> CommandResult {
-    let author = ctx.author();
-    let serenity_ctx = ctx.serenity_context();
-    let guild_id = match ctx.guild_id() {
-        Some(id) => id,
-        None => {
-            ctx.say("Can only use `/play` inside a guild").await?;
-            return Ok(());
-        }
-    };
-
-    let http_client = {
-        let data = serenity_ctx.data.read().await;
-        data.get::<HttpKey>()
-            .cloned()
-            .expect("Guaranteed to exist in the typemap.")
-    };
-
-    let manager = songbird::get(serenity_ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation.")
-        .clone();
-
-    // if not currently in voice channel, try to join
-    if !join::join_channel(ctx).await {
+    let Some(player) = Player::join(ctx).await else {
         ctx.send(
             CreateReply::default()
                 .content("You are not in a voice channel, please join one.")
@@ -44,86 +19,40 @@ pub async fn play(
         )
         .await?;
         return Ok(());
-    }
+    };
 
-    if let Some(handler_lock) = manager.get(guild_id) {
-        let mut handler = handler_lock.lock().await;
+    let http_client = {
+        let data = ctx.serenity_context().data.read().await;
+        data.get::<HttpKey>()
+            .cloned()
+            .expect("Guaranteed to exist in the typemap.")
+    };
 
-        let response = ctx
-            .send(
-                CreateReply::default().embed(
-                    CreateEmbed::default()
-                        .title("Searching...")
-                        .field("Query", &query, false),
-                ),
-            )
-            .await?;
+    let response = ctx
+        .send(
+            CreateReply::default().embed(
+                CreateEmbed::default()
+                    .title("Searching...")
+                    .field("Query", &query, false),
+            ),
+        )
+        .await?;
 
-        let src = if let Ok(url) = Url::parse(&query) {
-            YoutubeDl::new(http_client, url.to_string())
-        } else {
-            YoutubeDl::new_search(http_client, query.clone())
-        };
-
-        let mut src: songbird::input::Input = src.clone().into();
-
-        // extract metadata about song
-        let aux_metadata = match src.aux_metadata().await {
-            Ok(metadata) => metadata,
-            Err(e) => {
-                error!("could not find metadata for query={} error={}", &query, e);
-                ctx.say("Unable to play your song, oops...").await?;
-                return Ok(());
-            }
-        };
-        let title = match aux_metadata.title {
-            Some(t) => t,
-            None => "Unknown".to_string(),
-        };
-        let source_url = match aux_metadata.source_url {
-            Some(url) => url,
-            None => "".to_string(),
-        };
-        let thumbnail_url = match aux_metadata.thumbnail {
-            Some(thumbnail) => thumbnail,
-            None => "".to_string(),
-        };
-        let author_name = match &author.global_name {
-            Some(name) => name,
-            None => &author.name,
-        };
-        let author_icon_url = match author.avatar_url() {
-            Some(url) => url,
-            None => "".to_string(),
-        };
-
-        info!(
-            "guild={} user(name=\"{}\",id={}) queued url=({})",
-            guild_id, &author.name, &author.id, source_url
-        );
-
-        // enqueue using songbird built-in queue
-        handler.enqueue_input(src).await;
-
+    let Some(track) = player.enqueue(http_client, &query, ctx.author()).await else {
         response
             .edit(
                 ctx,
-                CreateReply::default().embed(
-                    CreateEmbed::default()
-                        .title(title)
-                        .url(source_url)
-                        .thumbnail(thumbnail_url)
-                        .footer(
-                            CreateEmbedFooter::new(format!("Queued by {author_name}"))
-                                .icon_url(author_icon_url),
-                        ),
-                ),
+                CreateReply::default()
+                    .embed(CreateEmbed::default().title("Unable to play your song, oops...")),
             )
             .await?;
-    } else {
-        warn!("could not find guild={}", guild_id);
-        ctx.say("Unable to play your song, oops...").await?;
-    }
+        return Ok(());
+    };
 
+    response
+        .edit(ctx, CreateReply::default().embed(queued_embed(&track)))
+        .await?;
+
+    player.post_to(ctx.channel_id()).await;
     Ok(())
 }

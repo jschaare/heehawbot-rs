@@ -36,5 +36,7 @@ pub async fn on_ready<'a>(
         .expect("Failed to register commands in dev guild");
     }
 
-    Ok(Data {})
+    Ok(Data {
+        players: Default::default(),
+    })
 }
