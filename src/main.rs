@@ -62,6 +62,7 @@ async fn main() {
             commands: vec![
                 commands::utils::age::age(),
                 commands::utils::ping::ping(),
+                commands::utils::updateplayer::updateplayer(),
                 commands::music::join::join(),
                 commands::music::leave::leave(),
                 commands::music::play::play(),
